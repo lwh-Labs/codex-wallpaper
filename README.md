@@ -67,3 +67,12 @@ ZIP 可以解压到任意目录。若希望 Codex 也发现配套技能，可把
 3. 成功后，从原来的 ChatGPT Store 图标启动，按 **Ctrl + Alt + W**。Store 更换应用包版本后，重新执行一次启用命令。
 4. 要关闭，运行 `scripts\auto-start\chatgpt-wallpaper-disable.cmd`，再完全退出并重开 ChatGPT。启动和连接日志在 `%LOCALAPPDATA%\CWAuto`。
 
+
+### 实现原理
+
+1. **注册当前应用包。** 安装脚本识别当前用户安装的官方 Store 包，用 Windows 的 `IPackageDebugSettings.EnableDebugging` 注册本机编译的启动回调。注册绑定的是包含版本号的包全名，所以 Store 更新后要重新注册。
+2. **沿用原图标启动。** 点击原图标仍走 Windows 的应用包激活流程。Windows 把新进程和初始线程交给回调。回调核对应用包、可执行文件和用户身份，在进程恢复前给启动参数加上 `--remote-debugging-port=0`，由 Chromium 选择本机调试端口。它修改的是本次进程内存中的命令行，Store 安装文件无需修改。
+3. **后台连接窗口。** 回调恢复初始线程，再启动隐藏的 PowerShell 工作进程。工作进程确认监听端口属于刚启动的 ChatGPT，并且只监听回环地址，再启动 Node.js 壁纸脚本。脚本通过 Chrome DevTools Protocol 连接 Codex 渲染窗口，加载缩略图面板、注册 **Ctrl + Alt + W**，并读取上次保存的壁纸和不透明度。原图标本身无需改动。
+4. **撤销。** 关闭脚本检查注册归属，只撤销本项目的包调试回调。完全退出 ChatGPT 会结束当前调试会话，下次启动走普通的 Store 激活流程。
+
+主要入口见 [安装与撤销脚本](scripts/auto-start/chatgpt-wallpaper-auto.ps1)、[后台工作进程](scripts/auto-start/Attach-OriginalIconWallpaper.ps1) 和 [壁纸渲染脚本](scripts/wallpaper.mjs)。

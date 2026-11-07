@@ -67,3 +67,12 @@ This option targets the Windows x64 Microsoft Store ChatGPT package. A Windows p
 3. Open ChatGPT from its original Store icon and press **Ctrl + Alt + W**. Run the enable command again when a Store update replaces the package.
 4. To turn this off, run `scripts\auto-start\chatgpt-wallpaper-disable.cmd`, then quit and reopen ChatGPT. Startup and connection logs are under `%LOCALAPPDATA%\CWAuto`.
 
+
+### How it works
+
+1. **Register the current package.** The installer identifies the official Store package registered for the current user and calls Windows `IPackageDebugSettings.EnableDebugging` with the locally built startup callback. Registration is tied to the versioned package full name, so a Store update requires registering the replacement package.
+2. **Launch from the original icon.** The icon still uses Windows package activation. Windows passes the new process and its initial thread to the callback. After validating the package, executable, and user, the callback adds `--remote-debugging-port=0` to the command line in process memory before resuming the thread. Chromium chooses the local debugging port. Store package files are left intact.
+3. **Attach in the background.** After resuming the thread, the callback starts a hidden PowerShell worker. The worker checks that the new ChatGPT process owns the loopback listener, then starts the Node.js wallpaper script. The script uses the Chrome DevTools Protocol to attach to the Codex renderer, load the picker, register **Ctrl + Alt + W**, and restore the saved wallpaper and opacity. The original icon needs no changes.
+4. **Roll back.** The disable script checks ownership and unregisters this project's package-debug callback. Fully quitting ChatGPT ends the current debugging session. The next launch uses normal Store activation.
+
+See the [enable and disable script](scripts/auto-start/chatgpt-wallpaper-auto.ps1), [background worker](scripts/auto-start/Attach-OriginalIconWallpaper.ps1), and [wallpaper renderer script](scripts/wallpaper.mjs).
