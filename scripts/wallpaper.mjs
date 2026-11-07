@@ -1,10 +1,14 @@
-import { readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const mime = { '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.gif':'image/gif',
   '.webp':'image/webp', '.mp4':'video/mp4', '.webm':'video/webm' };
 const type = file => mime[path.extname(file).toLowerCase()];
-const data = file => 'data:' + type(file) + ';base64,' + readFileSync(file).toString('base64');
+const maxMediaBytes = 64 * 1024 * 1024;
+function data(file) {
+  if (statSync(file).size > maxMediaBytes) throw Error('Wallpaper file exceeds 64 MiB.');
+  return 'data:' + type(file) + ';base64,' + readFileSync(file).toString('base64');
+}
 
 function catalog(roots) {
   const items = new Map();
@@ -24,10 +28,17 @@ function catalog(roots) {
         }
         const preview = [metadata.preview, 'preview.jpg', 'preview.png', 'preview.gif', 'preview.webp']
           .map(local).find(Boolean);
-        const media = local(metadata.file) ?? preview;
+        const isScene = String(metadata.type).toLowerCase() === 'scene';
+        const cachedStill = isScene && process.env.LOCALAPPDATA
+          ? path.join(process.env.LOCALAPPDATA, 'CWAuto', 'scene-stills', entry.name + '.jpg') : null;
+        const sceneStill = cachedStill && statSync(cachedStill, {throwIfNoEntry:false})?.isFile()
+          ? cachedStill : null;
+        const original = local(metadata.file) ?? sceneStill;
+        const oversized = original && !type(original).startsWith('video/') && statSync(original).size > maxMediaBytes;
+        const media = original && !oversized ? original : preview;
         if (!media) continue;
         items.set(entry.name, { id:entry.name, title:String(metadata.title || entry.name),
-          preview, media, fallback:!local(metadata.file) });
+          preview, media, fallback:media !== original, oversized:Boolean(oversized), sceneStill:Boolean(sceneStill && media === sceneStill) });
       } catch {}
     }
   }
@@ -191,8 +202,19 @@ function mount(items) {
     window.addEventListener('resize', refreshMainSurfaces);
     refreshMainSurfaces();
   }
+  function disposeBackground(node) {
+    if (!node) return;
+    if (node instanceof HTMLVideoElement) {
+      const url = node.src;
+      node.pause();
+      node.removeAttribute('src');
+      node.load();
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    }
+    node.remove();
+  }
   function removeWallpaper() {
-    background?.remove();
+    disposeBackground(background);
     background = null;
     glass?.remove();
     glass = null;
@@ -225,15 +247,29 @@ function mount(items) {
     if (video) {
       next = document.createElement('video');
       Object.assign(next, {muted:true, loop:true, playsInline:true});
-      next.src = url;
-      await Promise.race([
-        next.play(),
-        new Promise((_, reject) => setTimeout(() => reject(Error('Video load timed out')), 7000)),
-      ]).catch(error => {
+      let timer, onPolicyViolation;
+      const loadFailure = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Error('视频加载超时')), 7000);
+        onPolicyViolation = event => {
+          if (event.effectiveDirective === 'media-src') {
+            reject(Error('Codex 的媒体策略拦截了本地视频地址 (media-src)'));
+          }
+        };
+        document.addEventListener('securitypolicyviolation', onPolicyViolation);
+      });
+      try {
+        next.src = url;
+        await Promise.race([next.play(), loadFailure]);
+      } catch (error) {
+        const detail = next.error?.message || error.message;
         next.removeAttribute('src');
         next.load();
-        throw error;
-      });
+        if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+        throw Error(detail);
+      } finally {
+        clearTimeout(timer);
+        document.removeEventListener('securitypolicyviolation', onPolicyViolation);
+      }
     } else {
       const [header, base64] = url.split(',', 2);
       const bytes = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
@@ -250,7 +286,7 @@ function mount(items) {
     next.setAttribute('aria-hidden', 'true');
     enableGlass();
     document.body.prepend(next);
-    background?.remove();
+    disposeBackground(background);
     background = next;
   };
   window.__codexWallpaperResult = (error, selectedId) => {
@@ -304,8 +340,9 @@ function mount(items) {
       opacityLabel.append(opacityValue, slider);
       dialog.append(opacityLabel, button('Restore default', () => window.codexWallpaperSelect('')), status, grid);
       for (const item of items) {
-        const card = button(item.title + (item.fallback ? ' · Preview' : ''),
+        const card = button(item.title + (item.oversized ? ' · 原文件过大' : item.fallback ? ' · 仅可预览，需场景渲染' : item.sceneStill ? ' · 高清静态' : ''),
           () => window.codexWallpaperSelect(item.id));
+        card.disabled = item.fallback;
         if (item.hasPreview) {
           const img = document.createElement('img');
           thumbnails.set(item.id, img);
@@ -334,7 +371,7 @@ function mount(items) {
   };
   window.addEventListener('keydown', open, true);
   const savedId = localStorage.getItem(selectionKey);
-  if (savedId && items.some(item => item.id === savedId)) window.codexWallpaperSelect(savedId);
+  if (savedId && items.some(item => item.id === savedId && !item.fallback)) window.codexWallpaperSelect(savedId);
   window[key] = () => {
     window.removeEventListener('keydown', open, true);
     dialog?.remove();
@@ -373,7 +410,7 @@ if (port === '--list') {
       const timer = setTimeout(() => { pending.delete(id); reject(Error(method + ' timed out')); }, 15000);
       pending.set(id, message => {
         clearTimeout(timer);
-        if (message.error || message.result?.exceptionDetails) reject(Error(JSON.stringify(message)));
+        if (message.error || message.result?.exceptionDetails) reject(Error(message.result?.exceptionDetails?.exception?.description || message.error?.message || message.result?.exceptionDetails?.text || method));
         else resolve(message.result);
       });
       ws.send(JSON.stringify({id, method, params, sessionId}));
@@ -391,6 +428,28 @@ if (port === '--list') {
     let detach;
     const detached = new Promise(resolve => { detach = resolve; });
     const evaluate = expression => send('Runtime.evaluate', {expression, awaitPromise:true}, sessionId);
+    async function playLocalVideo(file) {
+      const input = await evaluate(`(() => {
+        const field = document.createElement('input');
+        field.type = 'file';
+        return field;
+      })()`);
+      const objectId = input.result.objectId;
+      if (!objectId) throw Error('无法创建本地视频文件句柄。');
+      try {
+        await send('DOM.setFileInputFiles', {objectId, files:[file]}, sessionId);
+        await send('Runtime.callFunctionOn', {
+          objectId, awaitPromise:true,
+          functionDeclaration: `async function () {
+            const file = this.files[0];
+            if (!file) throw Error('无法读取选中的本地视频文件。');
+            await window.__codexWallpaperApply(URL.createObjectURL(file), true);
+          }`,
+        }, sessionId);
+      } finally {
+        await send('Runtime.releaseObject', {objectId}, sessionId).catch(() => {});
+      }
+    }
     async function transfer(url, applyExpression) {
       if (!url) return evaluate(applyExpression('""'));
       await evaluate('window.__codexWallpaperChunks = []; void 0');
@@ -428,13 +487,19 @@ if (port === '--list') {
         selection = selection.then(async () => {
           const item = items.get(id);
           if (id && !item) return;
-          const url = item ? data(item.media) : '';
-          await transfer(url, value => 'window.__codexWallpaperApply(' + value + ',' +
-            Boolean(item && type(item.media).startsWith('video/')) + ')');
+          if (item?.fallback) return;
+          if (item && type(item.media).startsWith('video/')) {
+            await playLocalVideo(item.media);
+          } else {
+            await transfer(item ? data(item.media) : '', value =>
+              'window.__codexWallpaperApply(' + value + ',false)');
+          }
           await evaluate('window.__codexWallpaperResult?.("",' + JSON.stringify(id) + ')');
         }).catch(async error => {
-          console.error(error.message);
-          await evaluate('window.__codexWallpaperResult?.("Wallpaper could not be loaded. See launcher output.")')
+          const detail = error.message.slice(0, 900);
+          console.error('Original wallpaper failed: ' + detail);
+          await evaluate('window.__codexWallpaperResult?.(' +
+            JSON.stringify('原壁纸加载失败：' + detail) + ')')
             .catch(() => {});
         });
       }
@@ -443,8 +508,8 @@ if (port === '--list') {
     try {
       await send('Runtime.enable', {}, sessionId);
       await send('Runtime.addBinding', {name:'codexWallpaperSelect'}, sessionId);
-      const display = [...items.values()].map(({id,title,preview,fallback}) =>
-        ({id,title,hasPreview:Boolean(preview),fallback}));
+      const display = [...items.values()].map(({id,title,preview,fallback,oversized,sceneStill}) =>
+        ({id,title,hasPreview:Boolean(preview),fallback,oversized,sceneStill}));
       const install = '(' + mount.toString() + ')(' + JSON.stringify(display) + ')';
       const source = 'document.body ? ' + install + ' : document.addEventListener("DOMContentLoaded", () => {' +
         install + '}, {once:true})';
@@ -478,10 +543,6 @@ if (port === '--list') {
     throw error;
   }
 }
-
-
-
-
 
 
 

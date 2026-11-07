@@ -7,7 +7,7 @@ Use downloaded Steam Wallpaper Engine Workshop items as backgrounds in Codex for
 ## Features
 
 - Discover locally downloaded Wallpaper Engine Workshop projects (Steam app ID `431960`).
-- Use supported images and MP4 or WebM videos. Scene projects use their Workshop preview when available.
+- Play local MP4 and WebM originals through a browser file handle. For scene projects, an extracted high-resolution still can be applied when available. Workshop thumbnails are used for browsing.
 - Adjust wallpaper opacity live from **0–100%**. The picker remembers the last successfully applied wallpaper and opacity on this machine.
 - Show the wallpaper behind the chat with lightly frosted sidebar and composer surfaces and text shadows for contrast.
 - Run independently of Codex Dynamic Skin.
@@ -23,6 +23,10 @@ You need Windows, the Microsoft Store ChatGPT desktop app with Codex, Node.js 22
 
 You can extract the ZIP anywhere. For skill discovery in Codex, place the entire folder containing `SKILL.md` under `%USERPROFILE%\.codex\skills\`.
 
+## Launch from the Start menu
+
+Run `scripts\install-shortcut.cmd` once, then open **ChatGPT 壁纸版** from the Start menu. The connection runs in the background and writes its log to `%LOCALAPPDATA%\CodexWallpaperStandalone\launcher.log`. This is the dedicated entry point for the public release.
+
 ## Restore and exit
 
 The next time you open ChatGPT through the launcher, it restores the last successful selection if the wallpaper is still available. Choose **Restore default** to clear the current and saved wallpaper. To end the wallpaper session, quit ChatGPT completely and reopen it from its regular app icon.
@@ -37,7 +41,7 @@ The launcher uses a loopback-only debugging port to load the picker into the Cod
 | The Steam library is missing | Pass the Steam library root that contains `steamapps`, such as `E:\Steam`. |
 | The shortcut does nothing | Check that the launcher reports a connection and that the ChatGPT window has focus. |
 | The connection times out or repeatedly disconnects | Keep the terminal error and app version. Debugger behavior can vary across Store builds. |
-| A scene wallpaper shows a preview | This version uses the Workshop preview for scenes. It does not run the Wallpaper Engine scene renderer. |
+| A scene card is preview-only | This project needs a scene renderer or an extracted high-resolution still. The thumbnail is for browsing. |
 
 Run this from PowerShell in the extracted folder to check which Workshop items the picker can discover. It does not launch ChatGPT.
 
@@ -46,3 +50,5 @@ Run this from PowerShell in the extracted folder to check which Workshop items t
 ```
 
 The picker interaction is inspired by [reasonix-wallpaper](https://github.com/lwh-Labs/reasonix-wallpaper). The earlier implementation that requires Codex Dynamic Skin is available in [v0.2.0](https://github.com/lwh-Labs/codex-wallpaper/releases/tag/v0.2.0).
+
+Extracted scene stills can be placed at `%LOCALAPPDATA%\CWAuto\scene-stills\<Workshop ID>.jpg`. The release ZIP contains no personal wallpaper cache.
