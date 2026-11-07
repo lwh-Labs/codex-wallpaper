@@ -25,7 +25,7 @@ ZIP 可以解压到任意目录。若希望 Codex 也发现配套技能，可把
 
 ## 从开始菜单启动
 
-在解压目录运行一次 `scripts\install-shortcut.cmd`，以后从开始菜单打开 **ChatGPT 壁纸版** 即可。连接在后台运行，日志位于 `%LOCALAPPDATA%\CodexWallpaperStandalone\launcher.log`。公开版使用这个专用入口。
+在解压目录运行一次 `scripts\install-shortcut.cmd`，以后从开始菜单打开 **ChatGPT 壁纸版** 即可。连接在后台运行，日志位于 `%LOCALAPPDATA%\CodexWallpaperStandalone\launcher.log`。
 
 ## 恢复壁纸与退出
 
@@ -52,3 +52,18 @@ ZIP 可以解压到任意目录。若希望 Codex 也发现配套技能，可把
 交互参考了 [reasonix-wallpaper](https://github.com/lwh-Labs/reasonix-wallpaper)。需要 Codex Dynamic Skin 的旧实现保留在 [v0.2.0](https://github.com/lwh-Labs/codex-wallpaper/releases/tag/v0.2.0)。
 
 `scene.pkg` 的高清静态图缓存位置为 `%LOCALAPPDATA%\CWAuto\scene-stills\<创意工坊 ID>.jpg`。发布包不包含个人壁纸缓存。
+
+## 实验功能：原图标自动加载
+
+此功能面向 Windows x64 的 Microsoft Store 版 ChatGPT。Windows 包调试会在应用启动时运行本地回调，回调为新进程加入本机调试端口，再启动后台壁纸服务。启用期间，Windows 对该应用的挂起、恢复和终止行为可能变化。
+
+1. 从 [codex-glass-themes 源码](https://github.com/mabyes1/codex-glass-themes/tree/35b5f0593852abcb52625fdab8367c8a4bafb601/packaging/payload) 单独取得 `PackageDebugSession.cs`、`PackageStartupDebugger.cs` 和 `StartupArguments.cs`，放在同一目录。公开 ZIP 提供集成脚本，回调在本机编译。
+2. 完全退出 ChatGPT。在本项目解压目录打开 PowerShell，运行以下命令。把示例路径换成你的源码目录和 Steam 库根目录。
+
+```powershell
+.\scripts\auto-start\chatgpt-wallpaper-auto.cmd -UpstreamSource "C:\path\to\payload" -SteamLibraryPath "E:\Steam"
+```
+
+3. 成功后，从原来的 ChatGPT Store 图标启动，按 **Ctrl + Alt + W**。Store 更换应用包版本后，重新执行一次启用命令。
+4. 要关闭，运行 `scripts\auto-start\chatgpt-wallpaper-disable.cmd`，再完全退出并重开 ChatGPT。启动和连接日志在 `%LOCALAPPDATA%\CWAuto`。
+

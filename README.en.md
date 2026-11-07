@@ -25,7 +25,7 @@ You can extract the ZIP anywhere. For skill discovery in Codex, place the entire
 
 ## Launch from the Start menu
 
-Run `scripts\install-shortcut.cmd` once, then open **ChatGPT 壁纸版** from the Start menu. The connection runs in the background and writes its log to `%LOCALAPPDATA%\CodexWallpaperStandalone\launcher.log`. This is the dedicated entry point for the public release.
+Run `scripts\install-shortcut.cmd` once, then open **ChatGPT 壁纸版** from the Start menu. The connection runs in the background and writes its log to `%LOCALAPPDATA%\CodexWallpaperStandalone\launcher.log`.
 
 ## Restore and exit
 
@@ -52,3 +52,18 @@ Run this from PowerShell in the extracted folder to check which Workshop items t
 The picker interaction is inspired by [reasonix-wallpaper](https://github.com/lwh-Labs/reasonix-wallpaper). The earlier implementation that requires Codex Dynamic Skin is available in [v0.2.0](https://github.com/lwh-Labs/codex-wallpaper/releases/tag/v0.2.0).
 
 Extracted scene stills can be placed at `%LOCALAPPDATA%\CWAuto\scene-stills\<Workshop ID>.jpg`. The release ZIP contains no personal wallpaper cache.
+
+## Experimental: launch from the original ChatGPT icon
+
+This option targets the Windows x64 Microsoft Store ChatGPT package. A Windows package-debug callback adds a loopback debugging port to the fresh process and starts the wallpaper worker. Package debugging can change how Windows suspends, resumes, and terminates the app while enabled.
+
+1. Obtain `PackageDebugSession.cs`, `PackageStartupDebugger.cs`, and `StartupArguments.cs` from the [codex-glass-themes source](https://github.com/mabyes1/codex-glass-themes/tree/35b5f0593852abcb52625fdab8367c8a4bafb601/packaging/payload) and save them together. The release provides the integration scripts and builds the callback locally.
+2. Quit ChatGPT completely. From PowerShell in the extracted project folder, run the following with your actual source directory and Steam library root.
+
+```powershell
+.\scripts\auto-start\chatgpt-wallpaper-auto.cmd -UpstreamSource "C:\path\to\payload" -SteamLibraryPath "E:\Steam"
+```
+
+3. Open ChatGPT from its original Store icon and press **Ctrl + Alt + W**. Run the enable command again when a Store update replaces the package.
+4. To turn this off, run `scripts\auto-start\chatgpt-wallpaper-disable.cmd`, then quit and reopen ChatGPT. Startup and connection logs are under `%LOCALAPPDATA%\CWAuto`.
+

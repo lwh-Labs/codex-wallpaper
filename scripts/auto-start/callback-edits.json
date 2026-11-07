@@ -1,0 +1,14 @@
+[
+  {
+    "before": "string log=null;bool canResume=false;",
+    "after": "string log=null, worker=null, expectedImage=null;bool canResume=false;"
+  },
+  {
+    "before": "log=(string)config[\"log\"];",
+    "after": "log=(string)config[\"log\"];\n            worker=config.ContainsKey(\"worker\") ? (string)config[\"worker\"] : null;\n            expectedImage=(string)config[\"image\"];"
+  },
+  {
+    "before": "return (bool)result[\"resumed\"]?0:1;",
+    "after": "if ((bool)result[\"resumed\"] && (bool)result[\"patched\"] && worker != null) {\n            try {\n                var shell = Path.Combine(Environment.SystemDirectory, @\"WindowsPowerShell\\v1.0\\powershell.exe\");\n                var arguments = \"-NoProfile -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File \\\"\" +\n                    worker + \"\\\" -CodexPid \" + result[\"pid\"] + \" -Image \\\"\" + expectedImage + \"\\\"\";\n                var launch = new ProcessStartInfo(shell, arguments) {\n                    UseShellExecute = false, CreateNoWindow = true\n                };\n                using (Process.Start(launch)) {}\n            } catch (Exception error) {\n                if (log != null) File.AppendAllText(log, serializer.Serialize(\n                    new Dictionary<string,object>{{\"workerError\",error.Message}}) + Environment.NewLine);\n            }\n        }\n        return (bool)result[\"resumed\"]?0:1;"
+  }
+]
